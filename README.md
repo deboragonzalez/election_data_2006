@@ -1,2 +1,2 @@
-# fed_election_commission_2006
-Federal Election Commission 2006 Data
+# Federal Election Commission Data Analysis 2006
+Federal Election Commission
