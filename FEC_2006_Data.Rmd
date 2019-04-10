@@ -1,0 +1,315 @@
+---
+title: "Federal Election Commission Data Analysis 2006"
+author: "Debi Gonzalez"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Libraries Setup:
+library(readxl)
+library(janitor)
+library(fs)
+library(gt)
+library(tidyverse)
+library(stringr)
+library(lubridate) 
+```
+
+
+### Party Cash Holdings by End of Period 2006
+```{r Cash Holdings Data Setup, echo = FALSE, cache = TRUE}
+
+# Dataset setup for "All Candidates" 2005-2006. This will be used to evaluate
+# cash holdings of parties by the end of term.
+
+# To constantly update the data with the most recent version as well as prevent
+# excess storage, I will use the download.file function and then the file_delete
+# function so that I don't have to store excessively larga datasets for no reason.
+ 
+download.file(url = "https://www.fec.gov/files/bulk-downloads/2006/weball06.zip",
+              dest = "weball06.zip",
+              mode = "wb", 
+              quiet = TRUE)
+
+# Now, I will read in the dataset and assign it a name. Because this is a zip
+# file, I must use "read_delim", which is a type of read_* function. Reading the
+# documentation helped me figure out the order of commands. This dataset has no
+# column names so I'm setting col_names = FALSE so that they will be labeled X1,
+# X2, etc., which facilitates later use.
+
+money <- read_delim("weball06.zip", delim = "|", 
+                    col_names = FALSE,
+                    col_types = cols(.default = col_double(),
+                                X1 = col_character(),
+                                X2 = col_character(),
+                                X3 = col_character(),
+                                X5 = col_character(),
+                                X19 = col_character(),
+                                X20 = col_character(),
+                                X21 = col_character(),
+                                X22 = col_character(),
+                                X23 = col_character(),
+                                X24 = col_character(),
+                                X28 = col_character())) %>%
+  transmute(cand_id = X1, cand_name = X2, party = X5, cash = X11, cand_state = X19) %>%
+  
+  # Knowing what variables I need for Q1 and using the FEC documentation on
+  # their data, I assigned the X column to its corresponding variable name. To
+  # do this I used the transmute command (part of dplyr which is in tidyverse).
+  
+  mutate(cand_name = str_to_title(cand_name)) %>%
+  separate(cand_name, into = c("last_name", "first_name"), sep = ",") %>%
+  mutate(last_name = str_trim(last_name)) %>%
+  mutate(first_name = str_trim(first_name)) %>%
+  mutate(full_name = paste(first_name, last_name))
+
+  # I want to clean my names and make them pretty, so "str_to_title" can be used
+  # to give the cand_name variable proper formatting. By separating, I overwrite
+  # the cand_name variable into two variables: first and last names. The
+  # separating character is the ",". I then clean these names with "str_trim"
+  # removes whitespace from start and end of string and create a additional
+  # variable "full_name" by pasting these two together. Now, the dataset is
+  # ready to begin answering the questions.
+
+# I have read in the data to R objects, so I don't need the raw data anymore so I can delete it.
+
+file_delete("weball06.zip")
+```
+
+
+```{r Cash Holdings Table, echo = FALSE}
+
+# Table shows the 5 parties with the largest aggregate cash holdings at the end of the period
+
+money %>%
+  mutate(party = case_when(party %in% c("Dem", "DEM", "dem", "DFL") ~ "Democratic Party", 
+                           party %in% c("Rep", "REP", "rep") ~ "Republican Party",  
+                           party %in% "IND" ~ "Independent",
+                           party %in% "LIB" ~ "Libertarian Party",
+                           party %in% "OTH" ~ "Other",
+                           TRUE ~ party)) %>%
+  
+  # Since the data was loaded and assigned already, I can pipe it in this chunk
+  # and create a table without loading it again. This mutate allows me to group
+  # all the different values (abbreviations) of a particular party to a name
+  # that makes sense and that I would ike to include in my table later on. This
+  # is done with a "case_when" which is an if/then statement telling R to group
+  # values into an umbrella value (i.e. "Republican Party") that I would like to
+  # use.
+  
+  group_by(party) %>%
+  summarize(p_money = sum(cash)) %>%
+  arrange(desc(p_money)) %>%
+  head(5) %>%
+  
+  # In order to find (end) cash per party, need to group_by party before I
+  # summarize. So, I'm getting sum of cash per party and arranging it in
+  # descending order to get the top 5 parties. Now, because I collapsed/grouped
+  # the different values of each party above, I already have good labels for
+  # each of the top 5 parties. In reality, I added this code after I got to this
+  # point and saw the value options per party.
+  
+  gt() %>%
+  fmt_currency(vars(p_money), currency = "USD") %>%
+  cols_label(party = "Party", p_money = "Total Cash") %>%
+  tab_header(title = "Parties with the Largest Aggregate Cash Holdings", 
+             subtitle = "The Democratic Party leads the way in aggregate cash holdings at the end of the priod") %>%
+  tab_source_note(source_note = "Source: Federal Election Commission")
+
+  # After the dataset is cleaned and reduced to what the question needs, I
+  # formatted with gt. First, "fmt_currency" will turn my newly summarized
+  # aggregate cash variable into money format. Then, I label columns, assign a
+  # title and subtitle that provide insight into what the data is showing (or
+  # the story I'm trying to tell with the data) and list my source.
+```
+
+### Committee and Candidates per Party 2006
+
+```{r Committee Data Setup, echo = FALSE, cache = TRUE}
+
+# Loading and reading "Committee Master" dataset.
+
+download.file(url = "https://www.fec.gov/files/bulk-downloads/2006/cm06.zip",
+              dest = "cm06.zip",
+              mode = "wb", 
+              quiet = TRUE)
+com <- read_delim("cm06.zip", delim = "|", 
+                  col_names = FALSE,  
+                  col_types =  cols(X1 = col_character(),
+                            X2 = col_character(),
+                            X3 = col_character(),
+                            X4 = col_character(),
+                            X5 = col_character(),
+                            X6 = col_character(),
+                            X7 = col_character(),
+                            X8 = col_character(),
+                            X9 = col_character(),
+                            X10 = col_character(),
+                            X11 = col_character(),
+                            X12 = col_character(),
+                            X13 = col_character(),
+                            X14 = col_character(),
+                            X15 = col_character())) %>%
+  transmute(cmte_id = X1, cmte_party = X11, cand_id = X15) %>%
+  filter(!is.na(cmte_party)) %>%
+  mutate(cmte_party = case_when( cmte_party %in% c("rep", "REP", "Rep") ~ "Republican",
+                                 cmte_party %in% c("dem", "DEM", "Dem") ~ "Democrat", 
+                                 TRUE ~ "Other")) 
+
+# The column names needed to be assigned and I did this with the command
+# transmute. I decided to use the values above (dem, Dem, and DEM) and exclude
+# DFL. I filtered out cmte_party = na because I'm ignoring NA values for this
+# variable.
+
+file_delete("cm06.zip") 
+```
+
+
+```{r, echo = FALSE}
+
+# Committees and candidates per party 
+
+# The data was cleaned and labeled in the set up code chunk, so now I'm ready to
+# begin manipulating the data to create the desired table.
+
+com %>%
+  group_by(cmte_party) %>%
+  summarize(total_cmte = n_distinct(cmte_id),
+            total_cand = n_distinct(cand_id)) %>%
+  arrange(desc(total_cmte)) %>%
+  ungroup() %>%
+  
+  # We want to group by party so that when we summarize we can get the number of
+  # distinct committees and candidates per party. Before we summarize, we should
+  # filter out na so that it does not get counted as distinct candidates. Then,
+  # we can arrange in descending order of committees so as to facilitate visual
+  # representation.
+  
+  gt() %>%
+   cols_label(cmte_party = "Party", 
+              total_cmte = "Committees", 
+              total_cand = "Candidates") %>%
+   tab_header(title = "Committees and Candidates Party Affiliation", 
+             subtitle = "Number of unique committees and candidates per party") %>%
+   tab_source_note(source_note = "Source: Federal Election Commission")
+
+   # Using gt I formatted the data in a pretty table, but I still need to give
+   # proper labels to columns/variables using col_labels. Then, as always added
+   # a relevant title and subtitle as well as a source = Federal Election Commissions. 
+
+
+   # This table shows all committees and candidates belonging to
+   # democrats, republicans and 3rd parties regardless of whether they are
+   # linked to a candidate or committee or viceversa. So, we are only ignoring
+   # NA values for party.
+
+```
+
+
+
+
+### A View at Harvard's Professors Political Donations
+
+
+
+```{r Contributions Data Setup, echo = FALSE, cache = TRUE}
+
+# Loading and reading the “Contributions by individuals” dataset. Same process
+# as the previous two datasets.
+
+download.file(url = "https://www.fec.gov/files/bulk-downloads/2006/indiv06.zip",
+              dest = "indiv06.zip",
+              mode = "wb", 
+              quiet = TRUE)
+
+ind <- read_delim("indiv06.zip", delim = "|", col_names = FALSE, escape_double = FALSE, guess_max = 50000,
+        col_types = cols(.default = col_character(),
+                          X5 = col_double(),
+                          X15 = col_double(),
+                          X18 = col_double(),
+                          X21 = col_double())) %>%
+       transmute(cmte_id = X1, date = X14, amount = X15, employer = X12, occupation = X13) 
+
+# Because this dataset is so large we need to guess a maximum. I guessed about
+# 50,000 because it seemed like a large enough dataset. We don't need to escape
+# quotes by doubling them so we can set escape_double equal to FALSE. The
+# col_types was suggested by r, but works for our purpose. Using cache is
+# specially important for this file so that the dataset does not have to be
+# loaded every single type you run the chunk/rmarkdown. It will only run if the
+# code has changed.
+
+# Again, we can delete the file once we have assigned it to save space.
+
+file_delete("indiv06.zip")
+```
+
+#### Distribution of Harvard Professors' Political Donations 
+```{r, echo = FALSE}
+
+# Harvard Professors' Donations 
+
+# I need party from the candidates download as well as date, amount, employer
+# and occupation from the individual donations (the one I just downloaded)
+# dataset. I will merge the committee and the individual donations dataset by
+# committee ID. Then, I wil merge the newly created dataset with the "all
+# candidates" dataset by candidate ID. The idea is to have all of these datasets
+# connected to each other by key values that are shared across.
+
+merge1 <- left_join(com, ind, by = "cmte_id")
+merged <- left_join(merge1, money, by = "cand_id") 
+
+
+donations <- merged %>%
+ filter(employer == "HARVARD UNIVERSITY") %>%
+ mutate(party = case_when(party %in% c("rep", "REP", "Rep") ~ "Republican",
+                          party %in% c("dem", "DEM", "Dem") ~ "Democrat", 
+                          is.na(party) ~ "Non-Partisan Donation",
+                          TRUE ~ "Other")) %>%
+ mutate(date = parse_date(date, format = "%m %d %Y")) %>%
+ mutate(quarter_date = cut(date, breaks = "quarters")) %>%
+ group_by(quarter_date, party) %>%
+ select(quarter_date, amount, party)
+
+# I want Harvard University employees so I filtered for that. Then I mutated
+# both the party variable and date variable like I did in Q4 to organize by
+# user-friendly party values and dates by quarters. Only difference is that
+# because in this question I did not exclude NA party values, I have several
+# nonpartisan (not associated with a party) donations, which are not 3rd
+# parties. I made this value "Non-Partisan Donation". I grouped by date and
+# party because I wanted my dataset to be organized in that fashion. It will
+# organize donations by the dates they were given in and the parties they were
+# donated to. Then, I selected date, amount, and party because these are the
+# variables I'm interested in exploring in my graphic.
+
+# Now, the graphic! 
+
+# My dataset already includes 'donations from individuals whose employer is,
+# exactly, “Harvard University”.' Because the I did not exclude donations not
+# associated to parties, my dataset includes a lot of "donations" for which
+# party = na. This will allow me to see non-partisan donations.
+
+ donations %>%
+ ggplot(aes(x=quarter_date, y=amount, size = amount, color=party)) + 
+  geom_point(alpha = 0.7, show.legend = TRUE) +  
+  scale_color_manual(breaks = c("Democrat", "Republican", "Non-Partisan Donation", "Other"),
+                     values=c("blue", "green", "yellow", "red")) +
+  scale_y_log10() +
+  scale_x_discrete(name ="Quarters", labels = c("2005-01", "2005-04", "2005-07", "2005-10", "2006-01", "2006-04", "2006-07", "2006-10")) +
+  ylab("Donation Amount") +
+  labs(title = "Harvard's Political Donations",
+       subtitle = "Harvard employees partisan and non-partisan political donations per quarter",
+       caption = "Source: Federal Election Commission")
+ 
+# I decided to set y = to amount in order to have a visual spread of the
+# donations in my graphic. I made color equal to the variable party and manually
+# made Republican = red, Democrat = blue, and Non-Partisan Donation = green. I
+# used the legend to be sure these colors mapped to their respective values.
+# Used gem_point to see individual donation more clearly and made alpha = 0.7 to
+# better see pts that lie underneath each other. I log scaled the y-axis
+# to get a better view of the data.  As always, added a relevant title,
+# subtitle, and caption.
+```
+        
+
