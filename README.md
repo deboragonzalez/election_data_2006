@@ -1,5 +1,6 @@
-# Cash Holdings by Party, Political Action Committees & Candidates by Party, and Harvard Professors' Political Donations
-## Federal Election Commission Data Analysis 2006
+# Money in Politics
+## Cash Holdings by Party, Political Action Committees & Candidates by Party, and Harvard Professors' Political Donations
+### Federal Election Commission Data Analysis 2006
 
 Uses three datasets:
 
